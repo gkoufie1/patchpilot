@@ -191,6 +191,14 @@ re-validated. **Outcome: REMEDIATED.** Real STIG results came through
 (app: 258 → 257 failing rules). Full report:
 [docs/lab-run-2026-10-18.md](docs/lab-run-2026-10-18.md).
 
+Every run, failed or not, is archived to S3 automatically. The status-check
+alarms added after the first incident watch all four nodes, and email when one
+stops responding.
+
+![S3: both of the day's runs archived, the aborted one and the remediated one](docs/images/rerun-s3-run-reports.png)
+
+![CloudWatch: four status-check alarms, all OK](docs/images/rerun-cloudwatch-alarms.png)
+
 ## Design decisions
 
 - **Planned from history, not from the schedule definition.** Schedules say
