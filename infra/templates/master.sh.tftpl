@@ -7,6 +7,7 @@ ${ttl}
 # --- Salt master ---
 curl -fsSL -o /tmp/bootstrap-salt.sh https://github.com/saltstack/salt-bootstrap/releases/latest/download/bootstrap-salt.sh
 sh /tmp/bootstrap-salt.sh -M -N stable
+systemctl enable --now salt-master
 cat > /etc/salt/master.d/patchpilot.conf <<'EOF'
 file_roots:
   base:

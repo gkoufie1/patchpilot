@@ -14,3 +14,6 @@ grains:
 EOF
 curl -fsSL -o /tmp/bootstrap-salt.sh https://github.com/saltstack/salt-bootstrap/releases/latest/download/bootstrap-salt.sh
 sh /tmp/bootstrap-salt.sh -A ${master_ip} -i ${minion_id} stable
+# The installer starts the minion but doesn't enable it; without this, the first
+# patch reboot leaves the host unreachable from the master.
+systemctl enable --now salt-minion

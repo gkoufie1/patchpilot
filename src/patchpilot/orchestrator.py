@@ -104,6 +104,7 @@ class PatchRun:
         except Abort as exc:
             self.rec.status = "aborted"
             self.step("aborted", "fail", str(exc))
+            self._restore_app()
         finally:
             self.rec.finished = iso(self.clock())
             self._report()
@@ -194,6 +195,7 @@ class PatchRun:
         pillar = {"patch_scope": self.opts.patch_scope}
         if "app" in self.targets:
             self.lab.salt.cmd(self.targets["app"], "service.stop", "tomcat")
+            self._app_stopped = True
             self.step("stop application", "ok", f"tomcat on {self.targets['app']}")
         for role in ORDER:
             m = self.targets.get(role)
@@ -212,7 +214,22 @@ class PatchRun:
             if role == "app":
                 self._inject(m)
                 self.lab.salt.cmd(m, "service.start", "tomcat")
+                self._app_stopped = False
         self._snow_note("Patching complete; running validation.")
+
+    def _restore_app(self) -> None:
+        """An abort after the app was stopped must not leave customers down."""
+        if not getattr(self, "_app_stopped", False):
+            return
+        app = self.targets["app"]
+        try:
+            ok = bool(self.lab.salt.cmd(app, "service.start", "tomcat").get(app))
+        except Exception as exc:
+            ok = False
+            log.warning("could not restart tomcat: %s", exc)
+        self.step("restore application", "ok" if ok else "fail",
+                  f"tomcat on {app} {'started again' if ok else 'STILL DOWN: start it by hand'}")
+        self._snow_note(f"Window aborted; application on {app} {'restored' if ok else 'still down'}.")
 
     def _inject(self, m: str) -> None:
         """Lab only: reproduce a real side effect of patching after the patch lands."""

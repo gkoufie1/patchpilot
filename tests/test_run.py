@@ -137,3 +137,15 @@ def test_low_memory_blocks_the_window(setup, tmp_path):
     run, code = _run(setup, tmp_path, lab=lab)
     assert code == 2
     assert "memory_available" in run.rec.steps[-1]["detail"]
+
+
+def test_abort_after_stopping_the_app_restarts_it(setup, tmp_path):
+    """Regression from the real lab: the DB never came back after its reboot, the run
+    aborted, and Tomcat was left stopped."""
+    lab = SimLab()
+    lab.wait_up = lambda minions, timeout=900, interval=15: (
+        [m for m in minions if m == "globex-db01"] if timeout > 60 else [])
+    run, code = _run(setup, tmp_path, lab=lab)
+    assert run.rec.status == "aborted"
+    assert run.rec.steps[-1]["step"] == "restore application"
+    assert lab.nodes["globex-app01"].services["tomcat"] is True

@@ -24,8 +24,10 @@ def scan_command(tag: str) -> str:
 
 def parse_results(stdout: str) -> dict[str, str]:
     results, rule = {}, None
-    for line in stdout.splitlines():
-        key, _, value = line.partition("\t")
+    # Split on \n only: oscap writes "Rule\r\t<id>", and splitlines() would treat
+    # that \r as a line break, separating every key from its value.
+    for line in stdout.split("\n"):
+        key, _, value = line.replace("\r", "").partition("\t")
         if key.strip() == "Rule":
             rule = value.strip()
         elif key.strip() == "Result" and rule:

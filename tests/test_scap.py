@@ -39,3 +39,12 @@ def test_diff_reports_fixed_and_regressed():
     assert d.fixed == ["xccdf_org.ssgproject.content_rule_security_patches_up_to_date"]
     assert d.regressed == ["xccdf_org.ssgproject.content_rule_sshd_disable_root_login"]
     assert d.summary == "app: 2 -> 2 failing rules (1 fixed, 1 new)"
+
+
+def test_parse_handles_carriage_returns_from_real_oscap():
+    """Regression from the real lab: oscap writes 'Rule\r\t<id>'. splitlines() split
+    every key from its value, so 4,295 lines of results parsed to zero rules."""
+    real = ("--- Starting Evaluation ---\n\nTitle\r\tInstall AIDE\n"
+            "Rule\r\txccdf_org.ssgproject.content_rule_package_aide_installed\n"
+            "Ident\r\tCCE-90843-4\nResult\r\tfail\n")
+    assert parse_results(real) == {"xccdf_org.ssgproject.content_rule_package_aide_installed": "fail"}

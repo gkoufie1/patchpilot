@@ -163,6 +163,34 @@ timer that won't fire on an expired deadline right after someone recovers a
 host. That last one cost the original DB node: the recovery reboot worked,
 then the timer shut it down.
 
+### The rerun: three more bugs, then a clean cycle
+
+The rebuilt lab (8 GB DB node, swap) survived the STIG scan. The DB node stayed
+at 3/3 status checks, with normal CPU and network, and rebooted into its patched
+kernel.
+
+![EC2 console: all four nodes at 3/3, DB node now t3.large](docs/images/rerun-ec2-status-checks.png)
+
+![CloudWatch: DB node at normal CPU with live network traffic during the run](docs/images/rerun-db01-cloudwatch.png)
+
+![System log: DB node booting the patched 5.14.0-687 kernel](docs/images/rerun-db01-system-log.png)
+
+The run still aborted, and it surfaced three bugs that only real servers
+could show:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| DB node "did not come back after reboot", but the OS was up | The Salt installer *started* `salt-minion` but never *enabled* it. No node had been rebooted by a patch run before, so it went unnoticed. | Bootstrap enables Salt on every node |
+| "No STIG results" from two healthy hosts | oscap writes `Rule\r\t<id>`. Python's `splitlines()` treats `\r` as a line break, so every key was split from its value and 4,295 lines parsed to zero rules. Salt's job cache proved the results had reached the master. This same bug was behind the previous night's false "scan ok". | Split on `\n` only, with a regression test using real oscap output |
+| After the abort, the application stayed down | Tomcat was stopped for the DB patch and nothing restarted it on abort | An abort now restores the application and records it |
+
+With those fixed, the full cycle completed: DB → app (reboot) → Windows
+(reboot), SELinux re-enabled by the injected "patch" side effect, caught
+as 502s, fixed with `httpd_can_network_connect` while staying Enforcing, and
+re-validated. **Outcome: REMEDIATED.** Real STIG results came through
+(app: 258 → 257 failing rules). Full report:
+[docs/lab-run-2026-10-18.md](docs/lab-run-2026-10-18.md).
+
 ## Design decisions
 
 - **Planned from history, not from the schedule definition.** Schedules say
@@ -204,10 +232,10 @@ infra/                    Terraform for the AWS lab
 
 - The planner, orchestrator, checks and reports are covered by tests and run
   end to end in simulation.
-- The AWS lab has been deployed: bootstrap, highstate and the full validation
-  suite passed on real RHEL 9 and Windows Server 2022 nodes. The first real
-  patch run hit the incident above. The fixes are in the code, and a clean
-  rerun on the resized lab is the next step.
+- The full cycle has run on real RHEL 9 and Windows Server 2022 nodes in AWS:
+  patch, reboot, failure caught, automatic remediation, re-validation and STIG
+  before/after. Getting there took two real incidents and four bug fixes,
+  documented above.
 - The JS7 client follows the JS7 REST API docs (`/joc/api/orders/history`) but
   hasn't been run against a live JOC Cockpit yet. Demo history is synthetic.
 - Salt does the OS patching that a tool like BigFix often does in production.

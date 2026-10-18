@@ -21,5 +21,6 @@ Invoke-WebRequest -UseBasicParsing -OutFile C:\patchpilot\bootstrap-salt.ps1 `
 $conf = "C:\ProgramData\Salt Project\Salt\conf\minion.d"
 New-Item -ItemType Directory -Force $conf | Out-Null
 "grains:`n  role: win`n  customer: globex-industrial`n  env: prod`n" | Set-Content "$conf\patchpilot.conf"
+Set-Service salt-minion -StartupType Automatic
 Restart-Service salt-minion
 </powershell>
