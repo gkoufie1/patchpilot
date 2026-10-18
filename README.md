@@ -86,6 +86,8 @@ connect with SSM Session Manager. Instances are Spot, and every node
 terminates itself after `ttl_minutes`. That timer is a systemd timer (a
 scheduled task on Windows), so the reboots during patching don't reset it.
 
+![Systems Manager Fleet Manager: all four nodes online, managed without SSH](docs/images/lab-ssm-fleet-manager.png)
+
 | Node | Image | Runs |
 |---|---|---|
 | patchpilot-master | RHEL 9 | Salt master, PatchPilot, optional JS7 |
