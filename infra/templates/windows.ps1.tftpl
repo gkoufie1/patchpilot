@@ -1,0 +1,25 @@
+<powershell>
+$ErrorActionPreference = "Stop"
+New-Item -ItemType Directory -Force C:\patchpilot | Out-Null
+
+# --- TTL: Stop-Computer after ${ttl_minutes} minutes; the instance terminates on shutdown ---
+(Get-Date).ToUniversalTime().AddMinutes(${ttl_minutes}).ToString("o") | Set-Content C:\patchpilot\ttl-deadline
+@'
+$deadline = [datetime]::Parse((Get-Content C:\patchpilot\ttl-deadline), $null, 'RoundtripKind')
+if ((Get-Date).ToUniversalTime() -ge $deadline) { Stop-Computer -Force }
+'@ | Set-Content C:\patchpilot\ttl.ps1
+$action  = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File C:\patchpilot\ttl.ps1"
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
+Register-ScheduledTask -TaskName "PatchPilotTTL" -Action $action -Trigger $trigger -User "SYSTEM" -RunLevel Highest -Force | Out-Null
+
+# --- Salt minion ---
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Invoke-WebRequest -UseBasicParsing -OutFile C:\patchpilot\bootstrap-salt.ps1 `
+  -Uri "https://github.com/saltstack/salt-bootstrap/releases/latest/download/bootstrap-salt.ps1"
+& C:\patchpilot\bootstrap-salt.ps1 -Minion "${minion_id}" -Master "${master_ip}"
+
+$conf = "C:\ProgramData\Salt Project\Salt\conf\minion.d"
+New-Item -ItemType Directory -Force $conf | Out-Null
+"grains:`n  role: win`n  customer: globex-industrial`n  env: prod`n" | Set-Content "$conf\patchpilot.conf"
+Restart-Service salt-minion
+</powershell>

@@ -1,0 +1,6 @@
+region         = "us-east-1"
+ttl_minutes    = 240
+use_spot       = true
+enable_windows = true   # false saves the most money
+enable_db      = true
+budget_email   = ""     # e.g. "you@example.com" to add a $20/month budget alert

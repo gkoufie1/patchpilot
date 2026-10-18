@@ -1,0 +1,44 @@
+# --- TTL: shut down (= terminate) ${ttl_minutes} minutes after first boot ---
+# A systemd timer, not `shutdown +N`, because patching reboots the box and a
+# pending shutdown would not survive that.
+mkdir -p /etc/patchpilot
+date -d "+${ttl_minutes} minutes" +%s > /etc/patchpilot/ttl-deadline
+cat > /usr/local/sbin/patchpilot-ttl <<'EOF'
+#!/bin/sh
+now=$(date +%s)
+deadline=$(cat /etc/patchpilot/ttl-deadline)
+[ "$now" -lt "$deadline" ] && exit 0
+# A deadline that passed while the host was down or frozen must not kill it
+# minutes after someone recovers it (the lab lost a DB node exactly this way).
+# Within 30 minutes of boot, give a 30-minute grace period instead.
+uptime_s=$(cut -d. -f1 /proc/uptime)
+if [ "$uptime_s" -lt 1800 ]; then
+  echo $((now + 1800)) > /etc/patchpilot/ttl-deadline
+  logger -t patchpilot-ttl "deadline passed while down; grace period until $(date -d @$((now + 1800)))"
+  exit 0
+fi
+/usr/sbin/shutdown -h now "PatchPilot lab TTL reached"
+EOF
+chmod 755 /usr/local/sbin/patchpilot-ttl
+cat > /etc/systemd/system/patchpilot-ttl.service <<'EOF'
+[Unit]
+Description=PatchPilot lab TTL check
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/patchpilot-ttl
+EOF
+cat > /etc/systemd/system/patchpilot-ttl.timer <<'EOF'
+[Unit]
+Description=PatchPilot lab TTL check every 5 minutes
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+[Install]
+WantedBy=timers.target
+EOF
+systemctl daemon-reload
+systemctl enable --now patchpilot-ttl.timer
+
+# --- SSM agent (RHEL images don't ship it) ---
+dnf install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+systemctl enable --now amazon-ssm-agent

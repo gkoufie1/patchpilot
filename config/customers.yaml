@@ -1,0 +1,45 @@
+# Customers, their environments, and which Salt minions make up each environment.
+# Only globex-industrial/prod is backed by real lab VMs; the others are planned
+# from history but have no targets, so `patchpilot run` refuses them.
+
+defaults:
+  buffer_minutes: 45        # padding on both sides of every predicted batch run
+  soak_days: 3              # prod waits this long after non-prod is patched
+  month_end_days: 2         # last N days of the month count as month-end
+  business_hours: "07:00-19:00"
+  lookback_days: 28         # history used to build runtime profiles
+
+customers:
+  - name: acme-aero
+    segment: federal          # monthly cycle; vulnerabilities due within 90 days
+    timezone: America/New_York
+    environments:
+      - name: nonprod
+        patch_minutes: 120
+      - name: prod
+        patch_minutes: 180
+        preferred_days: [sat, sun]
+
+  - name: globex-industrial
+    segment: commercial
+    timezone: Europe/Berlin
+    environments:
+      - name: nonprod
+        patch_minutes: 120
+      - name: prod
+        patch_minutes: 180
+        preferred_days: [sat, sun]
+        targets:              # Salt minion ids created by infra/ (Terraform)
+          db: globex-db01
+          app: globex-app01
+          win: globex-win01
+
+  - name: initech-medical
+    segment: commercial
+    timezone: America/Chicago
+    environments:
+      - name: nonprod
+        patch_minutes: 120
+      - name: prod
+        patch_minutes: 180
+        preferred_days: [sat, sun]

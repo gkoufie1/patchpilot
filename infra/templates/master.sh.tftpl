@@ -1,0 +1,89 @@
+#!/bin/bash
+set -euxo pipefail
+hostnamectl set-hostname patchpilot-master
+
+${ttl}
+
+# --- Salt master ---
+curl -fsSL -o /tmp/bootstrap-salt.sh https://github.com/saltstack/salt-bootstrap/releases/latest/download/bootstrap-salt.sh
+sh /tmp/bootstrap-salt.sh -M -N stable
+cat > /etc/salt/master.d/patchpilot.conf <<'EOF'
+file_roots:
+  base:
+    - /srv/patchpilot/salt
+pillar_roots:
+  base:
+    - /srv/patchpilot/pillar
+# Lab shortcut: the security group only admits lab members, so accept their keys.
+# A real deployment pre-seeds or reviews minion keys instead.
+auto_accept: True
+EOF
+
+# --- PatchPilot: Python 3.11 venv, code bundle from S3 ---
+dnf install -y python3.11 python3.11-pip
+python3.11 -m venv /opt/patchpilot/venv
+/opt/patchpilot/venv/bin/pip install -q --upgrade pip boto3
+
+cat > /etc/patchpilot/env <<'EOF'
+# Sourced by /usr/local/bin/patchpilot. Add integrations here:
+#   SNOW_INSTANCE=dev12345  SNOW_USER=admin  SNOW_PASSWORD=...
+#   PATCHPILOT_WEBHOOK_URL=https://...
+#   ANTHROPIC_API_KEY=...            (for `plan --ai`)
+#   JS7_URL=http://localhost:4446  JS7_USER=root  JS7_PASSWORD=root
+PATCHPILOT_HOME=/srv/patchpilot
+PATCHPILOT_S3_BUCKET=${bucket}
+AWS_DEFAULT_REGION=${region}
+EOF
+chmod 600 /etc/patchpilot/env
+
+cat > /usr/local/sbin/patchpilot-sync <<'EOF'
+#!/opt/patchpilot/venv/bin/python
+"""Pull the latest code bundle from S3 into /srv/patchpilot and reinstall.
+Keeps runs/, plans/ and data/. Re-run after `terraform apply` uploads a new bundle."""
+import io, shutil, subprocess, zipfile
+from pathlib import Path
+import boto3
+
+dest = Path("/srv/patchpilot")
+body = boto3.client("s3", region_name="${region}").get_object(
+    Bucket="${bucket}", Key="bundle/patchpilot.zip")["Body"].read()
+for sub in ("salt", "pillar", "src", "config", "tests"):
+    shutil.rmtree(dest / sub, ignore_errors=True)
+dest.mkdir(parents=True, exist_ok=True)
+zipfile.ZipFile(io.BytesIO(body)).extractall(dest)
+subprocess.run(["/opt/patchpilot/venv/bin/pip", "install", "-q", f"{dest}[aws,ai]"], check=True)
+subprocess.run(["systemctl", "restart", "salt-master"], check=True)
+print("synced", dest)
+EOF
+chmod 755 /usr/local/sbin/patchpilot-sync
+
+cat > /usr/local/bin/patchpilot <<'EOF'
+#!/bin/bash
+set -a; . /etc/patchpilot/env; set +a
+cd /srv/patchpilot
+exec /opt/patchpilot/venv/bin/patchpilot "$@"
+EOF
+chmod 755 /usr/local/bin/patchpilot
+
+cat > /usr/local/sbin/patchpilot-lab-init <<'EOF'
+#!/bin/bash
+# Wait for every minion, then build the lab with highstate.
+set -euo pipefail
+want="${minions}"
+for i in $(seq 1 90); do
+  missing=""
+  for m in $want; do
+    salt "$m" test.ping --timeout=5 --out=quiet 2>/dev/null || missing="$missing $m"
+  done
+  [ -z "$missing" ] && break
+  echo "waiting for:$missing"; sleep 20
+done
+[ -n "$missing" ] && { echo "gave up waiting for:$missing"; exit 1; }
+salt '*' saltutil.refresh_pillar
+salt '*' state.highstate --state-output=changes
+salt -G role:app selinux.getenforce
+echo "Lab ready. Try: sudo patchpilot validate --customer globex-industrial --env prod"
+EOF
+chmod 755 /usr/local/sbin/patchpilot-lab-init
+
+/usr/local/sbin/patchpilot-sync

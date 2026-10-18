@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+runs/
+plans/
+data/
+
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/.build/
+infra/terraform.tfstate*
+infra/terraform.tfvars
+
+# Never publish
+*.pdf
+infra/tfplan

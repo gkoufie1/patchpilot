@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euxo pipefail
+hostnamectl set-hostname ${minion_id}
+
+${ttl}
+
+# --- Salt minion ---
+mkdir -p /etc/salt/minion.d
+cat > /etc/salt/minion.d/patchpilot.conf <<'EOF'
+grains:
+  role: ${role}
+  customer: globex-industrial
+  env: prod
+EOF
+curl -fsSL -o /tmp/bootstrap-salt.sh https://github.com/saltstack/salt-bootstrap/releases/latest/download/bootstrap-salt.sh
+sh /tmp/bootstrap-salt.sh -A ${master_ip} -i ${minion_id} stable

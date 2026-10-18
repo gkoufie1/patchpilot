@@ -1,0 +1,15 @@
+[Unit]
+Description=Oracle Database Free (container)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=ORACLE_PASSWORD={{ password }}
+ExecStartPre=-/usr/bin/podman rm -f oracle-free
+ExecStart=/usr/bin/podman run --rm --name oracle-free -p 1521:1521 -e ORACLE_PASSWORD -v oracle-data:/opt/oracle/oradata docker.io/gvenzl/oracle-free:23-slim
+ExecStop=/usr/bin/podman stop -t 60 oracle-free
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

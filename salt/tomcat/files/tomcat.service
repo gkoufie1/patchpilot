@@ -1,0 +1,18 @@
+[Unit]
+Description=Apache Tomcat (PatchPilot demo application)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tomcat
+Group=tomcat
+Environment=CATALINA_HOME=/opt/tomcat/current
+Environment=CATALINA_BASE=/opt/tomcat/current
+Environment="CATALINA_OPTS=-Xms256m -Xmx512m"
+ExecStart=/opt/tomcat/current/bin/catalina.sh run
+SuccessExitStatus=143
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
